@@ -1,10 +1,10 @@
 # Solar MPPT Boost Lead Acid Battery Charger
 ## A solar powered charger designed for charging lead acid batteries with the same or slightly higher voltage than the solar panel.
-**More to come in the next while when I can find more documents and photos about it.*
+
 ## About this project
 The tracter is mainly used for mowing grass and does not get used much over the winter. As a result the battery in it has been known to be flat or very close to it by the time it is needed again when the grass starts growing. This charger was built to keep some charge in the battery so that the tractor would have a higher chance of starting when needed and hopefully extending the battery life of it by not letting it sit flat for months.
 
-I built this charge controller mostly out of various parts I had access to that were lying around. The solar panel was of a solar powered water pump and actually outputted 12V as opposed to the 18V from a standared "12V" panel designed for charging lead acid batteries. The solar panel is probably in the range of 10W.
+I built this charge controller mostly out of various parts I had access to that were lying around. The solar panel was from a solar powered water pump and actually outputted 12V as opposed to the 18V from a standared "12V" panel designed for charging lead acid batteries. The solar panel is probably in the range of 10W.
 
 Because of this lower voltage, the battery did not charge when connected directly to the solar panel. Most regular solar charge controllers seem to be designed to run off an 18V solar panel to charge a 12V battery, allowing several volts to play with, whereas I needed a controller that would increase the voltage to charge the battery.
 
@@ -18,6 +18,18 @@ The maximum power point tracking part of this is based off a version commonly de
 
 ## Setting the maximum voltage to charge the battery to
 Carefully adjust the potentiometer (white knob with Philips head screw) inside the box – it is quite sensitive. Measure the battery voltage carefully over the next while to check.
+
+## Photos of the original installation
+This has since removed as it is no longer required in this spot, but will be redeployed somewhere else at some stage.
+
+The shed and tractor that the charger was used with and the controller mounted on its post.
+![The shed and tractor that the charger was used with.](/Photos/TractorInShed.jpg) ![The controller on its post.](/Photos/ControllerOnPost.jpg)
+
+In case someone forgot to unplug the charger and drove off, a pair of bullet connectors were used to disconnect the wires. To stop them being unplugged in normal use, the wire from the rafters to the tractor is supported by a length of string that will break if pulled really hard to let the wires be unplugged.
+![Emergency safety release.](/Photos/SafetyRelease.jpg) ![The connector on the tractor end.](/Photos/TractorConnector.jpg)
+
+Inside the controller with the lid removed.()
+![Inside the controller with the lid removed](/Photos/Inside.jpg)
 
 ## How it works
 ![Circuit Diagram from /CircuitDiagram/CircuitDiagram_schemFixed_Fixed.png](/CircuitDiagram/CircuitDiagram_schemFixed_Fixed.png)
