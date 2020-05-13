@@ -23,13 +23,13 @@ Carefully adjust the potentiometer (white knob with Philips head screw) inside t
 This has since removed as it is no longer required in this spot, but will be redeployed somewhere else at some stage.
 
 The shed and tractor that the charger was used with and the controller mounted on its post.
-![The shed and tractor that the charger was used with.](/Photos/TractorInShed.jpg) ![The controller on its post.](/Photos/ControllerOnPost.jpg)
+![The shed and tractor that the charger was used with.](/Photos/TractorInShed.jpg =250x) ![The controller on its post.](/Photos/ControllerOnPost.jpg =250x)
 
 In case someone forgot to unplug the charger and drove off, a pair of bullet connectors were used to disconnect the wires. To stop them being unplugged in normal use, the wire from the rafters to the tractor is supported by a length of string that will break if pulled really hard to let the wires be unplugged.
-![Emergency safety release.](/Photos/SafetyRelease.jpg) ![The connector on the tractor end.](/Photos/TractorConnector.jpg)
+![Emergency safety release.](/Photos/SafetyRelease.jpg =250x) ![The connector on the tractor end.](/Photos/TractorConnector.jpg =250x)
 
 Inside the controller with the lid removed.()
-![Inside the controller with the lid removed](/Photos/Inside.jpg)
+![Inside the controller with the lid removed](/Photos/Inside.jpg =250x)
 
 ## How it works
 ![Circuit Diagram from /CircuitDiagram/CircuitDiagram_schemFixed_Fixed.png](/CircuitDiagram/CircuitDiagram_schemFixed_Fixed.png)
