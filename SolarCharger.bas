@@ -1,7 +1,10 @@
 'Solar powered boost battery charger with maximum powerpoint tracking
-'Revision 2.0 - 11 April 2018
 'See accompanying documentation for more information
-'Jotham Gates 2017 - 2018
+'Jotham Gates
+'Created 2017
+'Modified 01/07/2022
+
+symbol VERSION = "v2.1"
 
 'pins
 symbol led = c.0
@@ -16,21 +19,22 @@ symbol currentDuty = w12
 symbol mppVoltage = w13
 
 'constants
-symbol dutyMin = 0 '0% duty cycle at 4MHz clock at 15094Hz
-symbol dutyMax = 265 '50% duty cycle at 4MHz clock at 15094Hz
-symbol batMax = 140 '13.8 - adjust pot to be this
-symbol batMin = 137 '~13.1 - voltage at which to drop back into maximising
-symbol overVoltage = 200 'If over this voltage, cut of QUICK! - In case the load is suddenly reduced (battery unplugged)
+symbol DUTY_MIN = 0 '0% duty cycle at 4MHz clock at 15094Hz
+symbol DUTY_MAX = 265 '50% duty cycle at 4MHz clock at 15094Hz
+symbol BAT_MAX = 140 '13.8 - adjust pot to be this
+symbol BAT_MIN = 137 '~13.1 - voltage at which to drop back into maximising
+symbol OVER_VOLTAGE = 200 'If over this voltage, cut of QUICK! - In case the load is suddenly reduced (battery unplugged)
+
 init:
 	setfreq m32
-	sertxd("Started", 13, 10)
+	sertxd("Solar boost battery charger ", VERSION , cr, lf, "Jotham Gates, Compiled ", ppp_date_uk, cr, lf)
 	high led
 	pause 16000
 	low led
 	pause 24000
 	readadc voltsIn, solarVoltage
 	sertxd("Initial OCV: ", #solarVoltage, 13, 10)
-	currentDuty = dutymin
+	currentDuty = DUTY_MIN
 	pwmout pwmdiv4, mosfet, 132, currentDuty
 	gosub mpp
 	
@@ -38,19 +42,19 @@ main:
 	'Maximum Power Point Tracker part
 	readadc voltsIn, solarVoltage
 	if solarVoltage < mppVoltage then
-		if currentDuty > dutyMin then
+		if currentDuty > DUTY_MIN then
 			currentDuty = currentDuty - 1
 		endif
 	endif
 	if solarVoltage > mppVoltage then
-		if currentDuty < dutyMax then
+		if currentDuty < DUTY_MAX then
 			currentDuty = currentDuty + 1
 		endif
 	endif
 	
 	'Battery monitoring part
 	readadc voltsOut, batteryVoltage
-	if batteryVoltage > batMax then gosub batCharged
+	if batteryVoltage > BAT_MAX then gosub batCharged
 	'Change MOSFET duty cycle
 	pwmduty mosfet, currentDuty
 	'Re calibrate mpp every 300 seconds (time increment every 0.5 seconds at 32MHz
@@ -66,28 +70,28 @@ batCharged:
 		if time > 600 then gosub mpp
 		'Constant voltage part
 		readadc voltsOut, batteryVoltage
-		if batteryVoltage > batMax then
-			if currentDuty > dutyMin then
+		if batteryVoltage > BAT_MAX then
+			if currentDuty > DUTY_MIN then
 				currentDuty = currentDuty - 1
 			endif
 		endif
-		if batteryVoltage < batMax then
-			if currentDuty < dutyMax then
+		if batteryVoltage < BAT_MAX then
+			if currentDuty < DUTY_MAX then
 				currentDuty = currentDuty + 1
 			endif
 		endif
 		'Cut of quickly if massivly over voltage
-		if batteryVoltage >= overVoltage then
-			currentDuty = dutyMin
+		if batteryVoltage >= OVER_VOLTAGE then
+			currentDuty = DUTY_MIN
 		endif
 		pwmduty mosfet, currentduty
 		readadc voltsIn, solarVoltage
-	loop while solarVoltage >= mppVoltage and batteryVoltage >= batMin
+	loop while solarVoltage >= mppVoltage and batteryVoltage >= BAT_MIN
 	low led
 return
 mpp:
 	sertxd("Maximising",13,10)
-	currentDuty = dutyMin
+	currentDuty = DUTY_MIN
 	pwmduty mosfet, currentDuty
 	high led
 	pause 20000
