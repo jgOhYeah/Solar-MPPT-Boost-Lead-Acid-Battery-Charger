@@ -9,6 +9,9 @@
 ' Created 2017
 ' Modified 02/07/2022
 
+#picaxe 08m2
+#no_data
+
 #define VERSION "v2.1"
 
 ' pins
@@ -41,14 +44,14 @@ symbol mpp_voltage = w13
 #define EEPROM_MPP_NUMERATOR 2
 #define EEPROM_MPP_DENOMINATOR 3
 
-#define FIXED 0
-#define ADAPTIVE 1
+#define ADAPTIVE 0
+#define FIXED 1
 
 ' constants' ' 
 #define DUTY_MIN 0 ' 0% duty cycle at 4MHz clock at 15094Hz
 #define DUTY_MAX 265 ' 50% duty cycle at 4MHz clock at 15094Hz
-#define BAT_MAX 144 ' 14.4 - adjust pot to be this
-#define BAT_FLOAT 137 ' 13.7 - voltage to hold for float charging.
+#define BAT_MAX 145 ' 14.4 - adjust pot to be this
+#define BAT_FLOAT 138 ' 13.8 - voltage to hold for float charging.
 #define BAT_MIN 126 ' Voltage to reenter bulk charging when below this.
 #define BAT_MIN_LOCKOUT_TIME 60 ' Must have been running for 30s since last mppt before the under voltage can be recognised.
 #define OVER_VOLTAGE 180 ' If over this voltage, cut of QUICK! - In case the load is suddenly reduced (battery unplugged)
@@ -57,20 +60,18 @@ symbol mpp_voltage = w13
 
 init:
 	setfreq m32 ' 38400 Baud
-	sertxd("Solar boost battery charger ", VERSION , cr, lf, "Jotham Gates, Compiled ", ppp_date_uk, cr, lf, "Current (hardcoded) strategy: Charge up to ", #BAT_MAX, " (LED Flashing), then float at ", #BAT_FLOAT, cr, lf, "(LED on when solar voltage >> mpp, off otherwise).", cr, lf)
+	sertxd("Solar boost battery charger ", VERSION , cr, lf, "Jotham Gates, Compiled ", ppp_date_uk, cr, lf, "For more info, go to https://github.com/jgOhYeah/Solar-MPPT-Boost-Lead-Acid-Battery-Charger/", cr, lf)
 	' Retrieve and print settings
-	read EEPROM_MPP_VOLTAGE_MODE, tmpwd0l
-	if tmpwd0l = FIXED then
+	read EEPROM_MPP_VOLTAGE_MODE, fixed_mpp_voltage
+	if fixed_mpp_voltage = FIXED then
 		' Fixed voltage
-		fixed_mpp_voltage = FIXED
 		read EEPROM_MPP_FIXED_VOLTAGE, mpp_voltage_numerator
 		sertxd("Fixed MPP Voltage. Set to ", #mpp_voltage_numerator, cr, lf)
 	else
 		' Adaptive voltage
-		fixed_mpp_voltage = ADAPTIVE
 		read EEPROM_MPP_NUMERATOR, mpp_voltage_numerator
 		read EEPROM_MPP_DENOMINATOR, mpp_voltage_denominator
-		if mpp_voltage_numerator = 255 and mpp_voltage_denominator = 255 then
+		if mpp_voltage_numerator = 0 or mpp_voltage_denominator = 0 then
 			' Default EEPROM values from the factory. Load the defaults.
 			sertxd("EEPROM Memory seems to have not been set. Setting defaults.")
 			write EEPROM_MPP_NUMERATOR, 8
@@ -85,7 +86,7 @@ init:
 	' Debug mode and settings
 	debug_mode = 0
 	sertxd("Press:", cr, lf, "  - 'p' to print often", cr, lf, "  - 'f' for fixed mpp voltage mode", cr, lf, "  - 's' to set fixed mpp target voltage", cr, lf, "  - 'a' for adaptive mpp voltage mode (mpp voltage = OCV * numerator / denominator", cr, lf, "  - 'n' for numerator", cr, lf, "  - 'd' for denominator", cr, lf)
-	serrxd[16000, continue_init], tmpwd0l
+	serrxd[32000, continue_init], tmpwd0l
 	select tmpwd0l
 		case "p"
 			sertxd("Enabling debug mode", cr, lf)
@@ -123,10 +124,10 @@ init:
 	if debug_mode = 0 then reset_with_msg
 
 continue_init:
+	reconnect
+	sertxd("Continuing startup", cr, lf)
 	high PIN_LED
-	pause 16000
-	low PIN_LED
-	pause 24000
+	pause 4000
 	gosub set_bulk_charge
 	readadc PIN_VOLTS_IN, solar_voltage
 	sertxd("Initial OCV: ", #solar_voltage, cr, lf)
@@ -187,7 +188,7 @@ main:
 	goto main
 
 mpp:
-	if fixed_mpp_voltage = 0 then
+	if fixed_mpp_voltage = ADAPTIVE then
 		' Use the fraction of OCV rule.
 		sertxd("Adaptive MPPT. Maximising", cr, lf)
 		current_duty = DUTY_MIN
