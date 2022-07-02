@@ -1,8 +1,13 @@
-' Solar powered boost battery charger with maximum powerpoint tracking
-' See accompanying documentation for more information
-' Jotham Gates
+' Solar powered boost battery charger with approximated maximum powerpoint
+' tracking.
+' Aims to keep the solar panel voltage at ~80% OCV, or can be set to a fixed
+' value or some other fraction. See accompanying documentation for more
+' information.
+'
+' Written by Jotham Gates, based on a MPPT design used in model solar vehicle
+' races (https://www.modelsolar.org.au/).
 ' Created 2017
-' Modified 01/07/2022
+' Modified 02/07/2022
 
 #define VERSION "v2.1"
 
@@ -15,13 +20,17 @@ symbol PIN_VOLTS_IN = c.4
 ' variables
 symbol debug_mode = bit0
 symbol fixed_mpp_voltage = bit1
+symbol bulk_charge = bit2
 symbol battery_voltage = b1
 symbol solar_voltage = b2
+symbol battery_target_voltage = b3
 symbol tmpwd0 = w2
 symbol tmpwd0l = b4
 symbol tmpwd0h = b5
 symbol mpp_voltage_numerator = b6
 symbol mpp_voltage_denominator = b7
+symbol led_on_threshlod = b8 ' Solar voltage at which the LED will turn on in float mode.
+symbol previous_time = w10
 symbol debug_count = w11
 symbol current_duty = w12
 symbol mpp_voltage = w13
@@ -38,15 +47,17 @@ symbol mpp_voltage = w13
 ' constants' ' 
 #define DUTY_MIN 0 ' 0% duty cycle at 4MHz clock at 15094Hz
 #define DUTY_MAX 265 ' 50% duty cycle at 4MHz clock at 15094Hz
-#define BAT_MAX 142 ' 14.2 - adjust pot to be this
-#define BAT_FLOAT 138 ' ~13.8 - voltage to hold for float charging.
+#define BAT_MAX 144 ' 14.4 - adjust pot to be this
+#define BAT_FLOAT 137 ' 13.7 - voltage to hold for float charging.
+#define BAT_MIN 126 ' Voltage to reenter bulk charging when below this.
+#define BAT_MIN_LOCKOUT_TIME 60 ' Must have been running for 30s since last mppt before the under voltage can be recognised.
 #define OVER_VOLTAGE 180 ' If over this voltage, cut of QUICK! - In case the load is suddenly reduced (battery unplugged)
-#define DEBUG_EVERY 1000
+#define DEBUG_EVERY 800
+#define LED_ON_OFFSET 3 ' If solar_voltage > mpp_voltage + LED_ON_OFFSET, then led on, else off in float mode.
 
 init:
-	setfreq m32
-	sertxd("Solar boost battery charger ", VERSION , cr, lf, "Jotham Gates, Compiled ", ppp_date_uk, cr, lf)
-
+	setfreq m32 ' 38400 Baud
+	sertxd("Solar boost battery charger ", VERSION , cr, lf, "Jotham Gates, Compiled ", ppp_date_uk, cr, lf, "Current (hardcoded) strategy: Charge up to ", #BAT_MAX, " (LED Flashing), then float at ", #BAT_FLOAT, cr, lf, "(LED on when solar voltage >> mpp, off otherwise).", cr, lf)
 	' Retrieve and print settings
 	read EEPROM_MPP_VOLTAGE_MODE, tmpwd0l
 	if tmpwd0l = FIXED then
@@ -71,14 +82,15 @@ init:
 
 	endif
 
-	' Debug mode and keyboard
+	' Debug mode and settings
 	debug_mode = 0
-	sertxd("Press:", cr, lf, "  - 'p' to print often", cr, lf, "  - 'f' for fixed mpp voltage mode", cr, lf, "  - 's' to set fixed mpp target voltage", cr, lf, "  - 'a' for adaptive mpp voltage mode (mpp voltage = OCV * numerator / denominator", cr, lf, "  - 'n' for numerator", cr, lf, "  - 'd' for denominator")
+	sertxd("Press:", cr, lf, "  - 'p' to print often", cr, lf, "  - 'f' for fixed mpp voltage mode", cr, lf, "  - 's' to set fixed mpp target voltage", cr, lf, "  - 'a' for adaptive mpp voltage mode (mpp voltage = OCV * numerator / denominator", cr, lf, "  - 'n' for numerator", cr, lf, "  - 'd' for denominator", cr, lf)
 	serrxd[16000, continue_init], tmpwd0l
 	select tmpwd0l
 		case "p"
 			sertxd("Enabling debug mode", cr, lf)
 			debug_mode = 1
+
 		case "f"
 			sertxd("Setting fixed mode", cr, lf)
 			write EEPROM_MPP_VOLTAGE_MODE, FIXED
@@ -115,89 +127,64 @@ continue_init:
 	pause 16000
 	low PIN_LED
 	pause 24000
+	gosub set_bulk_charge
 	readadc PIN_VOLTS_IN, solar_voltage
 	sertxd("Initial OCV: ", #solar_voltage, cr, lf)
 	current_duty = DUTY_MIN
 	pwmout pwmdiv4, PIN_MOSFET, 132, current_duty
 	gosub mpp
 	
-mppt_mode:
-	' Maximum Power Point Tracker part
-	sertxd("MPPT Mode", cr, lf)
-	low PIN_LED
-	do
-		readadc PIN_VOLTS_IN, solar_voltage
-		if solar_voltage < mpp_voltage then
-			if current_duty > DUTY_MIN then
-				current_duty = current_duty - 1
-			endif
+main:
+	' Read voltages
+	readadc PIN_VOLTS_IN, solar_voltage
+	readadc PIN_VOLTS_OUT, battery_voltage
+
+	' Cut of quickly if massivly over voltage
+	if battery_voltage >= OVER_VOLTAGE then
+		current_duty = DUTY_MIN
+		pwmduty PIN_MOSFET, current_duty ' Take action before printing
+		sertxd("Overvoltage scram occurred", cr, lf)
+	endif
+
+	' Calculate and set the new duty cycle
+	if solar_voltage < mpp_voltage or battery_voltage > battery_target_voltage then
+		if current_duty > DUTY_MIN then
+			current_duty = current_duty - 1
 		endif
-		if solar_voltage > mpp_voltage then
-			if current_duty < DUTY_MAX then
-				current_duty = current_duty + 1
-			endif
+	endif
+	if solar_voltage > mpp_voltage and battery_voltage < battery_target_voltage then
+		if current_duty < DUTY_MAX then
+			current_duty = current_duty + 1
 		endif
-		
-		' Battery monitoring part
-		readadc PIN_VOLTS_OUT, battery_voltage
-		' Cut of quickly if massivly over voltage
-		if battery_voltage >= OVER_VOLTAGE then
-			current_duty = DUTY_MIN
-			pwmduty PIN_MOSFET, current_duty ' Take action before printing
-			sertxd("Overvoltage scram occurred", cr, lf)
+	endif
+	pwmduty PIN_MOSFET, current_duty
+
+	' Debugging
+	if debug_mode = 1 then gosub debug_charger
+
+	' Re calibrate mpp every 300 seconds (time increment every 0.5 seconds at 32MHz
+	if time > 600 then gosub mpp
+
+	' State machine for charging
+	' When started or if battery voltage ever falls below 12.6V, charge up to 14.3V.
+	' When 14.3V is reached, hold at 13.8V.
+	if bulk_charge = 1 then
+		if battery_voltage >= BAT_MAX then gosub set_float_charge
+		' Flash the led often
+		if time != previous_time then
+			toggle PIN_LED
+			previous_time = time
+		endif
+	else
+		if battery_voltage < BAT_MIN and time > BAT_MIN_LOCKOUT_TIME then gosub set_bulk_charge
+		' LED is on when voltage limited, LED is off when at mpp
+		if solar_voltage > led_on_threshlod then
+			high PIN_LED
+		else
 			low PIN_LED
 		endif
-
-		' Change MOSFET duty cycle
-		pwmduty PIN_MOSFET, current_duty
-
-		if debug_mode = 1 then
-			gosub debug_charger
-			low PIN_LED
-		endif
-
-		' Re calibrate mpp every 300 seconds (time increment every 0.5 seconds at 32MHz
-		if time > 600 then gosub mpp
-	loop while battery_voltage < BAT_MAX
-	' Fall through to constant_voltage_mode
-
-constant_voltage_mode:
-	' Send a message to say battery charged
-	sertxd("CV Mode", cr, lf)
-	' repeat until solar panel voltage is below mpp or the battery voltage has dropped sufficiently
-	high PIN_LED
-	do
-		' Re calibrate mpp every 300 seconds (time increment every 0.5 seconds at 32MHz
-		if time > 600 then gosub mpp
-		' Constant voltage part
-		readadc PIN_VOLTS_OUT, battery_voltage
-		if battery_voltage > BAT_FLOAT then
-			if current_duty > DUTY_MIN then
-				current_duty = current_duty - 1
-			endif
-		endif
-		if battery_voltage < BAT_FLOAT then
-			if current_duty < DUTY_MAX then
-				current_duty = current_duty + 1
-			endif
-		endif
-		' Cut of quickly if massivly over voltage
-		if battery_voltage >= OVER_VOLTAGE then
-			current_duty = DUTY_MIN
-			pwmduty PIN_MOSFET, current_duty ' Take action before printing
-			sertxd("Overvoltage scram occurred", cr, lf)
-			high PIN_LED
-		endif
-		pwmduty PIN_MOSFET, current_duty
-		readadc PIN_VOLTS_IN, solar_voltage
-
-		if debug_mode = 1 then
-			gosub debug_charger
-			high PIN_LED
-		endif
-
-	loop while solar_voltage >= mpp_voltage
-	goto mppt_mode
+	endif
+	goto main
 
 mpp:
 	if fixed_mpp_voltage = 0 then
@@ -218,14 +205,16 @@ mpp:
 		sertxd("Fixed MPPT at ", #mpp_voltage_numerator, cr, lf)
 		mpp_voltage = mpp_voltage_numerator
 	endif
+
+	led_on_threshlod = mpp_voltage + LED_ON_OFFSET
 	gosub reset_time
-return
+	return
 
 reset_time:
 	disabletime
 	time = 0
 	enabletime
-return
+	return
 
 reset_with_msg:
 	sertxd("Resetting so changes take effect.", cr, lf, cr, lf)
@@ -236,6 +225,20 @@ debug_charger:
 	inc debug_count
 	if debug_count > DEBUG_EVERY then
 		debug_count = 0
-		sertxd("Battery is ", #battery_voltage, ", Panel is ", #solar_voltage, cr, lf)
+		sertxd("Battery is ", #battery_voltage, ",\tPanel is ", #solar_voltage, ",\tDuty is ", #current_duty, cr, lf)
 	endif
+	return
+
+set_bulk_charge:
+	' Sets the voltages to charge to 14.3V
+	sertxd("Bulk charging to ", #BAT_MAX, "V", cr, lf)
+	bulk_charge = 1
+	battery_target_voltage = BAT_MAX
+	return
+
+set_float_charge:
+	' Sets the voltages to hold at 13.8V
+	sertxd("Float charging at ", #BAT_FLOAT, "V", cr, lf)
+	bulk_charge = 0
+	battery_target_voltage = BAT_FLOAT
 	return
